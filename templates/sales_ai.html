@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+{% block title %}AI Sales Engine — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">03 / Sales AI</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 03</div>
+    <h2 class="module-hero-title">AI Sales Engine</h2>
+    <p class="module-hero-desc">Select a customer to analyze their purchase history and generate personalized product recommendations powered by Gemini.</p>
+</section>
+
+<div class="sales-container">
+
+    <div class="sales-left">
+        <div class="sales-card">
+            <div class="sales-card-title">Select Customer</div>
+            <select id="customerSelect" class="wf-input" onchange="loadCustomerData()">
+                <option value="">Loading customers...</option>
+            </select>
+        </div>
+
+        <div class="sales-card" id="historyCard" style="display:none;">
+            <div class="sales-card-title">Purchase History</div>
+            <div id="customerMeta" class="sales-customer-meta"></div>
+            <div id="purchaseHistory" class="sales-history"></div>
+            <button class="wf-submit-btn" style="margin-top:1.5rem;width:100%;" onclick="getRecommendations()">Generate AI Recommendations →</button>
+        </div>
+    </div>
+
+    <div class="sales-right">
+        <div class="sales-card" id="recommendationsCard">
+            <div class="sales-card-title">AI Recommendations</div>
+            <div id="recommendationsBody" class="sales-recs-placeholder">
+                Select a customer and click "Generate AI Recommendations" to see personalized product suggestions.
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentCustomerId = null;
+
+async function loadCustomers() {
+    const res = await fetch('/api/sales/customers');
+    const customers = await res.json();
+    const select = document.getElementById('customerSelect');
+    select.innerHTML = '<option value="">— Select a customer —</option>' +
+        customers.map(c => `<option value="${c.id}">${c.name} — $${c.total_spend.toFixed(2)} spent</option>`).join('');
+}
+
+async function loadCustomerData() {
+    const select = document.getElementById('customerSelect');
+    const customerId = parseInt(select.value);
+    if (!customerId) return;
+
+    currentCustomerId = customerId;
+    const selectedOption = select.options[select.selectedIndex];
+
+    const res = await fetch(`/api/sales/customer/${customerId}/history`);
+    const orders = await res.json();
+
+    const historyCard = document.getElementById('historyCard');
+    historyCard.style.display = 'block';
+
+    const meta = document.getElementById('customerMeta');
+    meta.innerHTML = `<div class="sales-meta-text">${selectedOption.text}</div>`;
+
+    const historyDiv = document.getElementById('purchaseHistory');
+    if (orders.length === 0) {
+        historyDiv.innerHTML = '<div class="sales-empty">No purchase history found.</div>';
+        return;
+    }
+    historyDiv.innerHTML = orders.map(o => `
+        <div class="sales-order-item">
+            <div class="sales-order-name">${o.product_name}</div>
+            <div class="sales-order-meta">
+                <span class="sales-order-status ${o.status}">${o.status}</span>
+                <span>qty: ${o.quantity}</span>
+                <span>$${o.total_price.toFixed(2)}</span>
+            </div>
+        </div>
+    `).join('');
+
+    document.getElementById('recommendationsBody').innerHTML =
+        '<div class="sales-recs-placeholder">Click "Generate AI Recommendations" to analyze this customer.</div>';
+}
+
+async function getRecommendations() {
+    if (!currentCustomerId) return;
+
+    const btn = document.querySelector('#historyCard .wf-submit-btn');
+    btn.textContent = 'Analyzing with Gemini...';
+    btn.disabled = true;
+
+    const recsBody = document.getElementById('recommendationsBody');
+    recsBody.innerHTML = '<div class="sales-recs-placeholder">Gemini is analyzing purchase history...</div>';
+
+    const res = await fetch('/api/sales/recommend', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({customer_id: currentCustomerId})
+    });
+    const data = await res.json();
+
+    btn.textContent = 'Generate AI Recommendations →';
+    btn.disabled = false;
+
+    if (!data.success) {
+        recsBody.innerHTML = `<div class="sales-empty">${data.message}</div>`;
+        return;
+    }
+
+    recsBody.innerHTML = data.recommendations.map((r, i) => `
+        <div class="sales-rec-card">
+            <div class="sales-rec-number">0${i + 1}</div>
+            <div class="sales-rec-content">
+                <div class="sales-rec-product">${r.product}</div>
+                <div class="sales-rec-reason">${r.reason}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+loadCustomers();
+</script>
+{% endblock %}

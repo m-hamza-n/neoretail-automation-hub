@@ -1,0 +1,213 @@
+{% extends "layout.html" %}
+{% block title %}Lead Generation — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">06 / Leads</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 06</div>
+    <h2 class="module-hero-title">Lead Generation</h2>
+    <p class="module-hero-desc">Manage influencer leads. Scrape new leads (AI-generated), update status, add notes, and track potential collaborators.</p>
+</section>
+
+<div class="leads-container">
+    <div class="leads-card">
+        <div class="leads-toolbar">
+            <div class="leads-toolbar-left">
+                <button class="scrape-btn" id="scrapeBtn" onclick="scrapeLeads()">+ Scrape New Leads</button>
+                <div class="leads-filter">
+                    <label class="filter-label">Filter by status:</label>
+                    <select id="statusFilter" class="filter-select" onchange="filterLeads()">
+                        <option value="all">All</option>
+                        <option value="new">New</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="qualified">Qualified</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+            </div>
+            <div class="leads-stats" id="leadsStats"></div>
+        </div>
+
+        <div class="leads-table-wrapper">
+            <table class="leads-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Platform</th>
+                        <th>Followers</th>
+                        <th>Niche</th>
+                        <th>Contact</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="leadsTableBody">
+                    <tr><td colspan="8" class="leads-loading">Loading leads...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allLeads = [];
+let currentFilter = 'all';
+
+async function loadLeads() {
+    const res = await fetch('/api/leads/leads');
+    allLeads = await res.json();
+    filterLeads();
+}
+
+function filterLeads() {
+    const filtered = currentFilter === 'all' 
+        ? allLeads 
+        : allLeads.filter(l => l.status === currentFilter);
+    renderTable(filtered);
+    updateStats(filtered);
+}
+
+function renderTable(leads) {
+    const tbody = document.getElementById('leadsTableBody');
+    if (leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="leads-loading">No leads found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = leads.map(lead => `
+        <tr class="leads-row" data-lead-id="${lead.id}">
+            <td class="leads-name-cell">
+                <div class="leads-name">${escapeHtml(lead.name)}</div>
+                ${lead.profile_url ? `<div class="leads-url"><a href="${escapeHtml(lead.profile_url)}" target="_blank" rel="noopener">${escapeHtml(lead.profile_url)}</a></div>` : ''}
+            </td>
+            <td><span class="platform-badge platform-${lead.platform.toLowerCase()}">${lead.platform}</span></td>
+            <td class="leads-followers">${formatFollowers(lead.followers)}</td>
+            <td><span class="niche-badge">${lead.niche || '—'}</span></td>
+            <td class="leads-email">${lead.contact_email ? `<a href="mailto:${escapeHtml(lead.contact_email)}">${escapeHtml(lead.contact_email)}</a>` : '—'}</td>
+            <td>
+                <select class="status-select" data-lead-id="${lead.id}" onchange="updateStatus(${lead.id}, this.value)">
+                    <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
+                    <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
+                    <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>Qualified</option>
+                    <option value="rejected" ${lead.status === 'rejected' ? 'selected' : ''}>Rejected</option>
+                </select>
+            </td>
+            <td>
+                <input type="text" class="notes-input" data-lead-id="${lead.id}" value="${escapeHtml(lead.notes || '')}" placeholder="Add notes..." onblur="updateNotes(${lead.id}, this.value)">
+            </td>
+            <td>
+                <button class="lead-delete-btn" onclick="deleteLead(${lead.id})">✕</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateStats(leads) {
+    const total = leads.length;
+    const totalSpend = allLeads.length;
+    document.getElementById('leadsStats').innerHTML = `Showing ${total} of ${totalSpend} leads`;
+}
+
+async function scrapeLeads() {
+    const btn = document.getElementById('scrapeBtn');
+    btn.textContent = 'Generating with Gemini...';
+    btn.disabled = true;
+
+    const res = await fetch('/api/leads/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
+    const newLeads = await res.json();
+
+    btn.textContent = '+ Scrape New Leads';
+    btn.disabled = false;
+
+    // Add new leads to the beginning of allLeads and refresh
+    allLeads = [...newLeads, ...allLeads];
+    filterLeads();
+}
+
+async function updateStatus(leadId, newStatus) {
+    const res = await fetch(`/api/leads/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+    });
+    const data = await res.json();
+    if (data.success) {
+        // Update local data
+        const index = allLeads.findIndex(l => l.id === leadId);
+        if (index !== -1) {
+            allLeads[index].status = newStatus;
+        }
+        filterLeads();
+    } else {
+        alert('Failed to update status');
+        loadLeads(); // reload to reset
+    }
+}
+
+async function updateNotes(leadId, newNotes) {
+    const res = await fetch(`/api/leads/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: newNotes })
+    });
+    const data = await res.json();
+    if (data.success) {
+        const index = allLeads.findIndex(l => l.id === leadId);
+        if (index !== -1) {
+            allLeads[index].notes = newNotes;
+        }
+    } else {
+        alert('Failed to update notes');
+        loadLeads(); // reload to reset
+    }
+}
+
+async function deleteLead(leadId) {
+    if (!confirm('Delete this lead?')) return;
+    const res = await fetch(`/api/leads/leads/${leadId}`, {
+        method: 'DELETE'
+    });
+    const data = await res.json();
+    if (data.success) {
+        allLeads = allLeads.filter(l => l.id !== leadId);
+        filterLeads();
+    } else {
+        alert('Failed to delete lead');
+    }
+}
+
+function formatFollowers(num) {
+    if (!num) return '—';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(0) + 'K';
+    return num.toString();
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+document.getElementById('statusFilter').addEventListener('change', function(e) {
+    currentFilter = e.target.value;
+    filterLeads();
+});
+
+loadLeads();
+</script>
+{% endblock %}

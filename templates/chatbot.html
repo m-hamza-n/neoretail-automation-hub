@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block title %}AI Chatbot — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">01 / Chatbot</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 01</div>
+    <h2 class="module-hero-title">AI Customer Chatbot</h2>
+    <p class="module-hero-desc">Ask about your order status or get answers to common questions about returns, shipping, and sizing.</p>
+</section>
+
+<div class="chat-container">
+    <div class="chat-mode-toggle">
+        <button class="mode-btn active" data-mode="general" onclick="setMode('general', this)">General Questions</button>
+        <button class="mode-btn" data-mode="order" onclick="setMode('order', this)">Order Lookup</button>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+        <div class="chat-message bot">
+            <div class="chat-bubble">Hi! I'm NeoRetail's AI assistant. Ask me anything about returns, shipping, or sizing — or switch to Order Lookup to track your order.</div>
+        </div>
+    </div>
+
+    <div class="chat-input-row">
+        <input type="text" id="chatInput" class="chat-input" placeholder="Type your message..." onkeydown="if(event.key==='Enter') sendMessage()">
+        <button class="chat-send-btn" onclick="sendMessage()">Send</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentMode = 'general';
+
+function setMode(mode, btn) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const input = document.getElementById('chatInput');
+    input.placeholder = mode === 'order'
+        ? "Enter your order ID, e.g. 'Where is order 5?'"
+        : "Ask about returns, shipping, sizing...";
+}
+
+async function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    if (!message) return;
+
+    appendMessage(message, 'user');
+    input.value = '';
+    appendTyping();
+
+    const endpoint = currentMode === 'order' ? '/api/chatbot/order-lookup' : '/api/chatbot/chat';
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message})
+        });
+        const data = await res.json();
+        removeTyping();
+        appendMessage(data.reply, 'bot');
+    } catch (err) {
+        removeTyping();
+        appendMessage('Something went wrong. Please try again.', 'bot');
+    }
+}
+
+function appendMessage(text, sender) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `chat-message ${sender}`;
+    div.innerHTML = `<div class="chat-bubble">${text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function appendTyping() {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-message bot typing-indicator';
+    div.innerHTML = '<div class="chat-bubble"><span></span><span></span><span></span></div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function removeTyping() {
+    const typing = document.querySelector('.typing-indicator');
+    if (typing) typing.remove();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,225 @@
+{% extends "layout.html" %}
+{% block title %}CRM Dashboard — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">05 / CRM</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 05</div>
+    <h2 class="module-hero-title">CRM Dashboard</h2>
+    <p class="module-hero-desc">Full customer view with spend tracking, order history, and one-click email sequence triggers.</p>
+</section>
+
+<div class="crm-container">
+
+    <div class="crm-left">
+        <div class="crm-card">
+            <div class="crm-toolbar">
+                <input type="text" id="searchInput" class="crm-search" placeholder="Search customers..." oninput="filterCustomers()">
+                <div class="crm-stats" id="crmStats"></div>
+            </div>
+            <div class="crm-table-wrapper">
+                <table class="crm-table">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Total Spend</th>
+                            <th>Orders</th>
+                            <th>Status</th>
+                            <th>Last Purchase</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customerTableBody">
+                        <tr><td colspan="5" class="crm-loading">Loading customers...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="crm-right" id="crmDetail" style="display:none;">
+        <div class="crm-card">
+            <div class="crm-detail-header">
+                <div>
+                    <div class="crm-detail-name" id="detailName"></div>
+                    <div class="crm-detail-email" id="detailEmail"></div>
+                </div>
+                <button class="crm-close-btn" onclick="closeDetail()">✕</button>
+            </div>
+
+            <div class="crm-detail-stats" id="detailStats"></div>
+
+            <button class="wf-submit-btn crm-email-btn" id="triggerEmailBtn" onclick="triggerEmail()">
+                Trigger Email Sequence →
+            </button>
+
+            <div class="crm-section-title">Order History</div>
+            <div id="detailOrders" class="crm-orders"></div>
+
+            <div class="crm-section-title" style="margin-top:1.5rem;">Email History</div>
+            <div id="detailEmails" class="crm-email-history"></div>
+
+            <div id="emailResult" style="display:none;" class="crm-email-result"></div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allCustomers = [];
+let currentCustomerId = null;
+
+async function loadCustomers() {
+    const res = await fetch('/api/crm/customers');
+    allCustomers = await res.json();
+    renderTable(allCustomers);
+    updateStats(allCustomers);
+}
+
+function updateStats(customers) {
+    const totalSpend = customers.reduce((s, c) => s + c.total_spend, 0);
+    const active = customers.filter(c => c.is_active).length;
+    document.getElementById('crmStats').innerHTML =
+        `<span>${customers.length} customers</span><span>$${totalSpend.toFixed(0)} total revenue</span><span>${active} active</span>`;
+}
+
+function renderTable(customers) {
+    const tbody = document.getElementById('customerTableBody');
+    if (customers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="crm-loading">No customers found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = customers.map(c => `
+        <tr class="crm-row" onclick="loadCustomerDetail(${c.id})">
+            <td>
+                <div class="crm-customer-name">${escapeHtml(c.name)}</div>
+                <div class="crm-customer-email">${escapeHtml(c.email)}</div>
+            </td>
+            <td class="crm-spend">$${c.total_spend.toFixed(2)}</td>
+            <td>${c.order_count}</td>
+            <td><span class="crm-status ${c.is_active ? 'active' : 'inactive'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td class="crm-date">${c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString() : 'Never'}</td>
+        </tr>
+    `).join('');
+}
+
+function filterCustomers() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allCustomers.filter(c =>
+        c.name.toLowerCase().includes(query) || c.email.toLowerCase().includes(query)
+    );
+    renderTable(filtered);
+    updateStats(filtered);
+}
+
+async function loadCustomerDetail(customerId) {
+    currentCustomerId = customerId;
+    document.querySelectorAll('.crm-row').forEach(r => r.classList.remove('selected'));
+    if (event && event.currentTarget) {
+        event.currentTarget.classList.add('selected');
+    }
+
+    const res = await fetch(`/api/crm/customers/${customerId}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const c = data.customer;
+    document.getElementById('detailName').textContent = c.name;
+    document.getElementById('detailEmail').textContent = c.email;
+    document.getElementById('detailStats').innerHTML = `
+        <div class="crm-stat-item"><span>Total Spend</span><strong>$${c.total_spend.toFixed(2)}</strong></div>
+        <div class="crm-stat-item"><span>Orders</span><strong>${data.orders.length}</strong></div>
+        <div class="crm-stat-item"><span>Status</span><strong class="${c.is_active ? 'text-green' : 'text-red'}">${c.is_active ? 'Active' : 'Inactive'}</strong></div>
+        <div class="crm-stat-item"><span>Member Since</span><strong>${new Date(c.created_at).toLocaleDateString()}</strong></div>
+    `;
+
+    const ordersDiv = document.getElementById('detailOrders');
+    if (data.orders.length === 0) {
+        ordersDiv.innerHTML = '<div class="crm-empty">No orders yet.</div>';
+    } else {
+        ordersDiv.innerHTML = data.orders.map(o => `
+            <div class="crm-order-item">
+                <div class="crm-order-name">${escapeHtml(o.product_name)}</div>
+                <div class="crm-order-meta">
+                    <span class="sales-order-status ${o.status}">${o.status}</span>
+                    <span>qty: ${o.quantity}</span>
+                    <span>$${o.total_price.toFixed(2)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    const emailsDiv = document.getElementById('detailEmails');
+    if (data.email_logs.length === 0) {
+        emailsDiv.innerHTML = '<div class="crm-empty">No emails sent yet.</div>';
+    } else {
+        emailsDiv.innerHTML = data.email_logs.map(l => `
+            <div class="crm-email-item">
+                <div class="crm-email-subject">${escapeHtml(l.subject)}</div>
+                <div class="crm-email-meta">${l.email_type} · ${new Date(l.sent_at).toLocaleDateString()}</div>
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('emailResult').style.display = 'none';
+    document.getElementById('triggerEmailBtn').textContent = 'Trigger Email Sequence →';
+    document.getElementById('triggerEmailBtn').disabled = false;
+    document.getElementById('crmDetail').style.display = 'block';
+}
+
+function closeDetail() {
+    document.getElementById('crmDetail').style.display = 'none';
+    currentCustomerId = null;
+}
+
+async function triggerEmail() {
+    if (!currentCustomerId) return;
+    const btn = document.getElementById('triggerEmailBtn');
+    btn.textContent = 'Generating with Gemini...';
+    btn.disabled = true;
+
+    const res = await fetch('/api/crm/trigger-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({customer_id: currentCustomerId})
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        btn.textContent = 'Sent ✓';
+    } else {
+        btn.textContent = 'Trigger Email Sequence →';
+        btn.disabled = false;
+        alert(data.message);
+        return;
+    }
+
+    const resultDiv = document.getElementById('emailResult');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `
+        <div class="crm-email-preview-subject">${escapeHtml(data.subject)}</div>
+        <div class="crm-email-preview-body">${escapeHtml(data.body).replace(/\n/g, '<br>')}</div>
+    `;
+
+    loadCustomerDetail(currentCustomerId);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+loadCustomers();
+</script>
+{% endblock %}

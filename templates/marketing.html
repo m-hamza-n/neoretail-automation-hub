@@ -1,0 +1,169 @@
+{% extends "layout.html" %}
+{% block title %}Automated Marketing — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">04 / Marketing</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 04</div>
+    <h2 class="module-hero-title">Automated Marketing</h2>
+    <p class="module-hero-desc">Detect inactive customers and trigger personalized AI-written re-engagement emails. All powered by Gemini.</p>
+</section>
+
+<div class="mkt-container">
+
+    <div class="mkt-left">
+        <div class="mkt-card">
+            <div class="mkt-card-header">
+                <div class="mkt-card-title">Inactive Customers <span id="inactiveCount" class="mkt-count"></span></div>
+                <div class="mkt-subtitle">No purchase in 60+ days</div>
+            </div>
+            <div id="inactiveList" class="mkt-customer-list">
+                <div class="mkt-loading">Loading...</div>
+            </div>
+        </div>
+
+        <div class="mkt-card" id="emailLogsCard">
+            <div class="mkt-card-title">Email Log</div>
+            <div id="emailLogs" class="mkt-logs">
+                <div class="mkt-loading">Loading logs...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mkt-right">
+        <div class="mkt-card" id="emailPreviewCard">
+            <div class="mkt-card-title">Email Preview</div>
+            <div id="emailPreviewBody" class="mkt-preview-placeholder">
+                Click "Generate Email" next to a customer to preview their personalized re-engagement email.
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentEmail = null;
+
+async function loadInactiveCustomers() {
+    const res = await fetch('/api/marketing/inactive-customers');
+    const customers = await res.json();
+    const list = document.getElementById('inactiveList');
+    const count = document.getElementById('inactiveCount');
+    count.textContent = `(${customers.length})`;
+
+    if (customers.length === 0) {
+        list.innerHTML = '<div class="mkt-loading">No inactive customers found.</div>';
+        return;
+    }
+
+    list.innerHTML = customers.map(c => `
+        <div class="mkt-customer-item" id="customer-${c.id}">
+            <div class="mkt-customer-info">
+                <div class="mkt-customer-name">${c.name}</div>
+                <div class="mkt-customer-meta">
+                    ${c.days_inactive ? `${c.days_inactive} days inactive` : 'Never purchased'} &nbsp;·&nbsp; $${c.total_spend.toFixed(2)} spent
+                </div>
+            </div>
+            <button class="mkt-gen-btn" onclick="generateEmail(${c.id}, this)">Generate Email</button>
+        </div>
+    `).join('');
+}
+
+async function loadEmailLogs() {
+    const res = await fetch('/api/marketing/email-logs');
+    const logs = await res.json();
+    const container = document.getElementById('emailLogs');
+
+    if (logs.length === 0) {
+        container.innerHTML = '<div class="mkt-loading">No emails sent yet.</div>';
+        return;
+    }
+
+    container.innerHTML = logs.map(l => `
+        <div class="mkt-log-item">
+            <div class="mkt-log-header">
+                <span class="mkt-log-name">${l.customer_name}</span>
+                <span class="mkt-log-time">${new Date(l.sent_at).toLocaleString()}</span>
+            </div>
+            <div class="mkt-log-subject">${l.subject}</div>
+        </div>
+    `).join('');
+}
+
+async function generateEmail(customerId, btn) {
+    btn.textContent = 'Generating...';
+    btn.disabled = true;
+
+    const res = await fetch('/api/marketing/generate-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({customer_id: customerId})
+    });
+    const data = await res.json();
+
+    btn.textContent = 'Regenerate';
+    btn.disabled = false;
+
+    if (!data.success) {
+        alert(data.message);
+        return;
+    }
+
+    currentEmail = data;
+
+    const preview = document.getElementById('emailPreviewBody');
+    preview.innerHTML = `
+        <div class="mkt-preview-to">
+            <span class="mkt-preview-label">To</span>
+            <span>${data.customer_name} &lt;${data.customer_email}&gt;</span>
+        </div>
+        <div class="mkt-preview-subject">
+            <span class="mkt-preview-label">Subject</span>
+            <span>${data.subject}</span>
+        </div>
+        <div class="mkt-preview-divider"></div>
+        <div class="mkt-preview-body">${data.body.replace(/\n/g, '<br>')}</div>
+        <div class="mkt-preview-actions">
+            <button class="wf-submit-btn" onclick="sendEmail()">Send Email →</button>
+        </div>
+    `;
+}
+
+async function sendEmail() {
+    if (!currentEmail) return;
+
+    const btn = document.querySelector('.mkt-preview-actions .wf-submit-btn');
+    btn.textContent = 'Sending...';
+    btn.disabled = true;
+
+    const res = await fetch('/api/marketing/send-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            customer_id: currentEmail.customer_id,
+            subject: currentEmail.subject,
+            body: currentEmail.body,
+        })
+    });
+    const data = await res.json();
+
+    btn.textContent = 'Sent ✓';
+
+    document.getElementById('emailPreviewBody').innerHTML += `
+        <div class="mkt-sent-confirm">✓ Email logged as sent to ${data.customer_email}</div>
+    `;
+
+    loadEmailLogs();
+}
+
+loadInactiveCustomers();
+loadEmailLogs();
+</script>
+{% endblock %}

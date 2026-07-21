@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<header class="hub-header">
+    <div class="hub-logo"><span>NEO</span><span style="color: var(--accent)">RETAIL</span></div>
+    <div class="hub-badge">7 Modules Active</div>
+</header>
+
+<section class="hub-hero">
+    <h1>AUTOMATION<br><span style="color: var(--accent)">HUB</span></h1>
+    <p>Intelligent systems that streamline operations, cut costs, and scale NeoRetail without the need to hire a big team.</p>
+</section>
+
+<div class="hub-divider"></div>
+
+<section class="modules-section">
+    <div class="modules-label">— Active Modules</div>
+    <div class="modules-grid">
+
+        <a href="/api/chatbot/" class="module-card">
+            <div class="module-card-number">01 / CHATBOT</div>
+            <div class="module-card-title">AI Customer Chatbot</div>
+            <div class="module-card-desc">Handles order status queries and returns using RAG over a knowledge base.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/workflow/" class="module-card">
+            <div class="module-card-number">02 / WORKFLOW</div>
+            <div class="module-card-title">Workflow Automation</div>
+            <div class="module-card-desc">Auto-generates discount codes and posts sale events on every new order.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/sales/" class="module-card">
+            <div class="module-card-number">03 / SALES AI</div>
+            <div class="module-card-title">AI Sales Engine</div>
+            <div class="module-card-desc">Analyzes purchase history and recommends top 3 next products per customer.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/marketing/" class="module-card">
+            <div class="module-card-number">04 / MARKETING</div>
+            <div class="module-card-title">Automated Marketing</div>
+            <div class="module-card-desc">Detects inactive customers and triggers personalized re-engagement emails.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/crm/" class="module-card">
+            <div class="module-card-number">05 / CRM</div>
+            <div class="module-card-title">CRM Dashboard</div>
+            <div class="module-card-desc">Full customer view with spend tracking and one-click email sequence triggers.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/leads/" class="module-card">
+            <div class="module-card-number">06 / LEADS</div>
+            <div class="module-card-title">Lead Generation</div>
+            <div class="module-card-desc">Scrapes influencer directories and pipes qualified leads into the CRM.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+        <a href="/api/tickets/" class="module-card">
+            <div class="module-card-number">07 / TRIAGE</div>
+            <div class="module-card-title">AI Ticket Triage</div>
+            <div class="module-card-desc">Auto-categorizes and prioritizes support tickets using LLM classification.</div>
+            <div class="module-card-arrow">Launch Module →</div>
+        </a>
+
+    </div>
+</section>
+
+<footer class="hub-footer">
+    <span>NeoRetail Automation Hub</span>
+    <span>Built with FastAPI + Gemini</span>
+</footer>
+
+{% endblock %}

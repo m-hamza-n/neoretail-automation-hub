@@ -1,0 +1,167 @@
+{% extends "layout.html" %}
+{% block title %}Workflow Automation — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">02 / Workflow</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 02</div>
+    <h2 class="module-hero-title">Workflow Automation</h2>
+    <p class="module-hero-desc">Place a new order and watch the automation trigger — discount code generation and event logging happen instantly.</p>
+</section>
+
+<div class="workflow-container">
+
+    <div class="workflow-left">
+        <div class="wf-card">
+            <div class="wf-card-title">Place New Order</div>
+            <div class="wf-form">
+                <div class="wf-form-group">
+                    <label class="wf-label">Customer</label>
+                    <select id="customerId" class="wf-input">
+                        <option value="">Loading customers...</option>
+                    </select>
+                </div>
+                <div class="wf-form-group">
+                    <label class="wf-label">Product</label>
+                    <select id="productName" class="wf-input">
+                        <option value="Oversized Linen Blazer">Oversized Linen Blazer</option>
+                        <option value="Slim Fit Cargo Trousers">Slim Fit Cargo Trousers</option>
+                        <option value="Ribbed Knit Turtleneck">Ribbed Knit Turtleneck</option>
+                        <option value="Leather Crossbody Bag">Leather Crossbody Bag</option>
+                        <option value="Canvas Sneakers White">Canvas Sneakers White</option>
+                        <option value="Wool Blend Overcoat">Wool Blend Overcoat</option>
+                        <option value="Cropped Denim Jacket">Cropped Denim Jacket</option>
+                        <option value="Silk Slip Dress">Silk Slip Dress</option>
+                        <option value="Vintage Wash Hoodie">Vintage Wash Hoodie</option>
+                        <option value="Structured Tote Bag">Structured Tote Bag</option>
+                    </select>
+                </div>
+                <div class="wf-form-row">
+                    <div class="wf-form-group">
+                        <label class="wf-label">Quantity</label>
+                        <input type="number" id="quantity" class="wf-input" value="1" min="1" max="10">
+                    </div>
+                    <div class="wf-form-group">
+                        <label class="wf-label">Total Price ($)</label>
+                        <input type="number" id="totalPrice" class="wf-input" value="99.00" min="1" step="0.01">
+                    </div>
+                </div>
+                <button class="wf-submit-btn" onclick="placeOrder()">Trigger Workflow →</button>
+            </div>
+        </div>
+
+        <div class="wf-result" id="wfResult" style="display:none;">
+            <div class="wf-result-title">Workflow Triggered</div>
+            <div class="wf-result-body" id="wfResultBody"></div>
+        </div>
+    </div>
+
+    <div class="workflow-right">
+        <div class="wf-card">
+            <div class="wf-card-header">
+                <div class="wf-card-title">Live Event Log</div>
+                <button class="wf-refresh-btn" onclick="loadEvents()">Refresh</button>
+            </div>
+            <div class="wf-events" id="wfEvents">
+                <div class="wf-loading">Loading events...</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadCustomers() {
+    const res = await fetch('/api/workflow/customers');
+    const customers = await res.json();
+    const select = document.getElementById('customerId');
+    select.innerHTML = customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+async function loadEvents() {
+    const container = document.getElementById('wfEvents');
+    container.innerHTML = '<div class="wf-loading">Loading...</div>';
+    const res = await fetch('/api/workflow/events');
+    const events = await res.json();
+    if (events.length === 0) {
+        container.innerHTML = '<div class="wf-loading">No events yet. Place an order to trigger the workflow.</div>';
+        return;
+    }
+    container.innerHTML = events.map(e => `
+        <div class="wf-event-item">
+            <div class="wf-event-header">
+                <span class="wf-event-type ${e.event_type}">${formatEventType(e.event_type)}</span>
+                <span class="wf-event-time">${formatTime(e.triggered_at)}</span>
+            </div>
+            <div class="wf-event-payload">${formatPayload(e.payload)}</div>
+        </div>
+    `).join('');
+}
+
+async function placeOrder() {
+    const customerId = parseInt(document.getElementById('customerId').value);
+    const productName = document.getElementById('productName').value;
+    const quantity = parseInt(document.getElementById('quantity').value);
+    const totalPrice = parseFloat(document.getElementById('totalPrice').value);
+
+    const btn = document.querySelector('.wf-submit-btn');
+    btn.textContent = 'Processing...';
+    btn.disabled = true;
+
+    const res = await fetch('/api/workflow/place-order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({customer_id: customerId, product_name: productName, quantity, total_price: totalPrice})
+    });
+    const data = await res.json();
+
+    btn.textContent = 'Trigger Workflow →';
+    btn.disabled = false;
+
+    const resultDiv = document.getElementById('wfResult');
+    const resultBody = document.getElementById('wfResultBody');
+    resultDiv.style.display = 'block';
+
+    if (data.success) {
+        resultBody.innerHTML = `
+            <div class="wf-result-row"><span>Order ID</span><strong>#${data.order_id}</strong></div>
+            <div class="wf-result-row"><span>Customer</span><strong>${data.customer_name}</strong></div>
+            <div class="wf-result-row"><span>Product</span><strong>${data.product}</strong></div>
+            <div class="wf-result-row discount"><span>Discount Code</span><strong>${data.discount_code}</strong></div>
+        `;
+        loadEvents();
+    } else {
+        resultBody.innerHTML = `<div class="wf-error">${data.message}</div>`;
+    }
+}
+
+function formatEventType(type) {
+    const map = {
+        'new_order': '🛒 New Order',
+        'discount_generated': '🎟 Discount Generated',
+        'slack_notified': '💬 Slack Notified',
+        'low_stock': '⚠️ Low Stock',
+    };
+    return map[type] || type;
+}
+
+function formatTime(iso) {
+    return new Date(iso).toLocaleString();
+}
+
+function formatPayload(payload) {
+    if (!payload) return '';
+    return Object.entries(payload).map(([k, v]) => `<span class="wf-payload-key">${k}:</span> ${v}`).join(' &nbsp;·&nbsp; ');
+}
+
+loadCustomers();
+loadEvents();
+</script>
+{% endblock %}<!-- Add logging for API calls -->

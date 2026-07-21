@@ -1,0 +1,297 @@
+{% extends "layout.html" %}
+{% block title %}AI Ticket Triage — NeoRetail Hub{% endblock %}
+{% block content %}
+
+<header class="hub-header">
+    <div class="hub-logo"><a href="/" style="text-decoration:none;color:inherit;"><span>NEO</span><span style="color:var(--accent)">RETAIL</span></a></div>
+    <div class="hub-badge">07 / Triage</div>
+</header>
+
+<section class="module-hero">
+    <div class="module-hero-label">Module 07</div>
+    <h2 class="module-hero-title">AI Ticket Triage</h2>
+    <p class="module-hero-desc">AI automatically categorizes and prioritizes support tickets. Manage and track all customer issues in one place.</p>
+</section>
+
+<div class="tickets-container">
+
+    <!-- Stats Section -->
+    <div class="tickets-stats" id="statsContainer">
+        <div class="ticket-stat-card">
+            <div class="ticket-stat-number" id="statTotal">—</div>
+            <div class="ticket-stat-label">Total Tickets</div>
+        </div>
+        <div class="ticket-stat-card">
+            <div class="ticket-stat-number" id="statOpen">—</div>
+            <div class="ticket-stat-label">Open</div>
+        </div>
+        <div class="ticket-stat-card">
+            <div class="ticket-stat-number" id="statHighUrgent">—</div>
+            <div class="ticket-stat-label">High / Urgent</div>
+        </div>
+        <div class="ticket-stat-card">
+            <div class="ticket-stat-number" id="statResolved">—</div>
+            <div class="ticket-stat-label">Resolved</div>
+        </div>
+    </div>
+
+    <!-- Submit Ticket Form -->
+    <div class="submit-form">
+        <div class="tickets-card-title">Submit New Ticket</div>
+        <div class="submit-form-row">
+            <div class="submit-form-group">
+                <label class="submit-label">Subject</label>
+                <input type="text" id="ticketSubject" class="submit-input" placeholder="Brief summary of the issue">
+            </div>
+            <div class="submit-form-group">
+                <label class="submit-label">Customer (optional)</label>
+                <select id="ticketCustomerId" class="submit-input">
+                    <option value="">— Anonymous / No customer —</option>
+                </select>
+            </div>
+        </div>
+        <div class="submit-form-group">
+            <label class="submit-label">Message</label>
+            <textarea id="ticketBody" class="submit-textarea" rows="4" placeholder="Detailed description of the problem..."></textarea>
+        </div>
+        <button class="submit-btn" id="submitTicketBtn" onclick="submitTicket()">Submit & Classify with AI →</button>
+        <div id="classificationResult" class="classification-result" style="display:none;"></div>
+    </div>
+
+    <!-- Ticket Table -->
+    <div class="tickets-card">
+        <div class="tickets-toolbar">
+            <div class="tickets-filters">
+                <select id="filterStatus" class="filter-select" onchange="loadTickets()">
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                </select>
+                <select id="filterCategory" class="filter-select" onchange="loadTickets()">
+                    <option value="">All Categories</option>
+                    <option value="refund">Refund</option>
+                    <option value="shipping">Shipping</option>
+                    <option value="product_question">Product Question</option>
+                    <option value="returns">Returns</option>
+                    <option value="other">Other</option>
+                </select>
+                <select id="filterPriority" class="filter-select" onchange="loadTickets()">
+                    <option value="">All Priorities</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <button class="refresh-btn" onclick="loadTickets()">↻ Refresh</button>
+        </div>
+
+        <div class="tickets-table-wrapper">
+            <table class="tickets-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Subject</th>
+                        <th>Category</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Customer</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="ticketsTableBody">
+                    <tr><td colspan="7" class="tickets-loading">Loading tickets...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allCustomers = [];
+
+async function loadCustomers() {
+    const res = await fetch('/api/crm/customers');
+    const customers = await res.json();
+    allCustomers = customers;
+    const select = document.getElementById('ticketCustomerId');
+    select.innerHTML = '<option value="">— Anonymous / No customer —</option>' +
+        customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.email)})</option>`).join('');
+}
+
+async function loadStats() {
+    const res = await fetch('/api/tickets/stats');
+    const stats = await res.json();
+    document.getElementById('statTotal').textContent = stats.total;
+    document.getElementById('statOpen').textContent = stats.open;
+    document.getElementById('statHighUrgent').textContent = stats.high_urgent;
+    document.getElementById('statResolved').textContent = stats.resolved;
+}
+
+async function loadTickets() {
+    const status = document.getElementById('filterStatus').value;
+    const category = document.getElementById('filterCategory').value;
+    const priority = document.getElementById('filterPriority').value;
+    
+    let url = '/api/tickets/tickets?';
+    if (status) url += `status=${status}&`;
+    if (category) url += `category=${category}&`;
+    if (priority) url += `priority=${priority}&`;
+    
+    const res = await fetch(url);
+    const tickets = await res.json();
+    renderTable(tickets);
+}
+
+function renderTable(tickets) {
+    const tbody = document.getElementById('ticketsTableBody');
+    if (tickets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="tickets-loading">No tickets found.</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = tickets.map(ticket => `
+        <tr class="tickets-row">
+            <td class="ticket-id">#${ticket.id}</td>
+            <td class="ticket-subject">
+                <div class="ticket-subject-text">${escapeHtml(ticket.subject)}</div>
+                <div class="ticket-subject-preview">${escapeHtml(ticket.body.substring(0, 60))}${ticket.body.length > 60 ? '...' : ''}</div>
+            </td>
+            <td><span class="category-badge category-${ticket.category}">${formatCategory(ticket.category)}</span></td>
+            <td><span class="priority-badge priority-${ticket.priority}">${formatPriority(ticket.priority)}</span></td>
+            <td>
+                <select class="status-select" data-ticket-id="${ticket.id}" onchange="updateStatus(${ticket.id}, this.value)">
+                    <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
+                    <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                    <option value="resolved" ${ticket.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+                    <option value="closed" ${ticket.status === 'closed' ? 'selected' : ''}>Closed</option>
+                </select>
+            </td>
+            <td class="ticket-customer">${getCustomerName(ticket.customer_id)}</td>
+            <td class="ticket-date">${formatDate(ticket.created_at)}</td>
+        </tr>
+    `).join('');
+}
+
+function getCustomerName(customerId) {
+    if (!customerId) return 'Anonymous';
+    const customer = allCustomers.find(c => c.id === customerId);
+    return customer ? escapeHtml(customer.name) : `ID: ${customerId}`;
+}
+
+async function submitTicket() {
+    const subject = document.getElementById('ticketSubject').value.trim();
+    const body = document.getElementById('ticketBody').value.trim();
+    const customerId = document.getElementById('ticketCustomerId').value;
+    
+    if (!subject || !body) {
+        alert('Please fill in both subject and message.');
+        return;
+    }
+    
+    const btn = document.getElementById('submitTicketBtn');
+    const resultDiv = document.getElementById('classificationResult');
+    
+    btn.textContent = 'Classifying with AI...';
+    btn.disabled = true;
+    resultDiv.style.display = 'none';
+    
+    const res = await fetch('/api/tickets/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            subject: subject,
+            body: body,
+            customer_id: customerId ? parseInt(customerId) : null
+        })
+    });
+    const data = await res.json();
+    
+    btn.textContent = 'Submit & Classify with AI →';
+    btn.disabled = false;
+    
+    // Show classification result
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `
+        <div class="classification-icon">✓</div>
+        <div class="classification-text">
+            Ticket #${data.id} submitted successfully!
+            AI assigned: <span class="category-badge category-${data.category}">${formatCategory(data.category)}</span>
+            and <span class="priority-badge priority-${data.priority}">${formatPriority(data.priority)}</span>
+        </div>
+    `;
+    
+    // Clear form
+    document.getElementById('ticketSubject').value = '';
+    document.getElementById('ticketBody').value = '';
+    document.getElementById('ticketCustomerId').value = '';
+    
+    // Refresh everything
+    loadStats();
+    loadTickets();
+    
+    // Hide result after 5 seconds
+    setTimeout(() => {
+        resultDiv.style.display = 'none';
+    }, 5000);
+}
+
+async function updateStatus(ticketId, newStatus) {
+    const res = await fetch(`/api/tickets/tickets/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+    });
+    const data = await res.json();
+    if (data.success) {
+        loadStats();
+        loadTickets();
+    } else {
+        alert('Failed to update status');
+        loadTickets(); // reload to reset
+    }
+}
+
+function formatCategory(category) {
+    const map = {
+        'refund': 'Refund',
+        'shipping': 'Shipping',
+        'product_question': 'Product Q',
+        'returns': 'Returns',
+        'other': 'Other'
+    };
+    return map[category] || category || '—';
+}
+
+function formatPriority(priority) {
+    if (!priority) return '—';
+    return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// Initial load
+loadCustomers();
+loadStats();
+loadTickets();
+</script>
+{% endblock %}
